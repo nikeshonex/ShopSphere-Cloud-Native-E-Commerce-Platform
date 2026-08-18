@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  name: shopsphere
+  namespace: argocd
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/nikeshonex/ShopSphere-Cloud-Native-E-Commerce-Platform.git
+    targetRevision: main
+    path: gitops/shopsphere
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shopsphere
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - CreateNamespace=true
+
