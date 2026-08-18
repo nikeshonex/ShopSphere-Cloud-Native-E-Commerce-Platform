@@ -1,0 +1,110 @@
+name: ShopSphere CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 584860297058.dkr.ecr.us-east-1.amazonaws.com
+  EKS_CLUSTER_NAME: ShopSphere-EKS
+  NAMESPACE: shopsphere
+
+jobs:
+
+  build-and-deploy:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::584860297058:role/ShopSphere-GitHubActions-Role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build backend
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA} \
+            ./backend
+
+      - name: Push backend
+        run: |
+          docker push \
+            $ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA}
+
+      - name: Build frontend
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA} \
+            ./frontend
+
+      - name: Push frontend
+        run: |
+          docker push \
+            $ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig \
+            --region $AWS_REGION \
+            --name $EKS_CLUSTER_NAME
+
+      - name: Deploy backend
+        run: |
+          kubectl apply \
+            -f k8s/shopsphere-backend.yaml
+
+          kubectl set image \
+            deployment/shopsphere-backend \
+            backend=$ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA} \
+            -n $NAMESPACE
+
+      - name: Deploy frontend
+        run: |
+          kubectl apply \
+            -f k8s/shopsphere-frontend.yaml
+
+          kubectl set image \
+            deployment/shopsphere-frontend \
+            frontend=$ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA} \
+            -n $NAMESPACE
+
+      - name: Deploy ingress
+        run: |
+          kubectl apply \
+            -f k8s/shopsphere-ingress.yaml
+
+      - name: Wait for backend
+        run: |
+          kubectl rollout status \
+            deployment/shopsphere-backend \
+            -n $NAMESPACE \
+            --timeout=180s
+
+      - name: Wait for frontend
+        run: |
+          kubectl rollout status \
+            deployment/shopsphere-frontend \
+            -n $NAMESPACE \
+            --timeout=180s
+
+      - name: Verify
+        run: |
+          kubectl get pods -n $NAMESPACE
+          kubectl get services -n $NAMESPACE
+          kubectl get ingress -n $NAMESPACE
+
