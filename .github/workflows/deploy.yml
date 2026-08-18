@@ -24,9 +24,15 @@ jobs:
 
     steps:
 
+      # -----------------------------------------
+      # 1. Checkout repository
+      # -----------------------------------------
       - name: Checkout code
         uses: actions/checkout@v6
 
+      # -----------------------------------------
+      # 2. Inspect GitHub OIDC claims
+      # -----------------------------------------
       - name: Inspect GitHub OIDC claims
         shell: bash
         run: |
@@ -34,58 +40,92 @@ jobs:
             -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
 
-          TOKEN=$(node -e "console.log(JSON.parse(process.argv[1]).value)" "$RESPONSE")
+          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
 
           PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
 
-          node - "$PAYLOAD" <<'NODE'
-          const payload = process.argv[2];
-          const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
-          const json = Buffer.from(normalized, 'base64').toString('utf8');
-          const claims = JSON.parse(json);
+          python3 - "$PAYLOAD" <<'PY'
+          import sys
+          import json
+          import base64
 
-          console.log("issuer:", claims.iss);
-          console.log("audience:", claims.aud);
-          console.log("subject:", claims.sub);
-          NODE
+          payload = sys.argv[1]
+          payload += "=" * (-len(payload) % 4)
 
+          data = base64.urlsafe_b64decode(payload)
+          claims = json.loads(data)
+
+          print("ISSUER:")
+          print(claims.get("iss"))
+
+          print("AUDIENCE:")
+          print(claims.get("aud"))
+
+          print("SUBJECT:")
+          print(claims.get("sub"))
+          PY
+
+      # -----------------------------------------
+      # 3. Configure AWS credentials using OIDC
+      # -----------------------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::584860297058:role/ShopSphere-GitHubActions-Role
           aws-region: ${{ env.AWS_REGION }}
 
+      # -----------------------------------------
+      # 4. Login to Amazon ECR
+      # -----------------------------------------
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
+      # -----------------------------------------
+      # 5. Build backend Docker image
+      # -----------------------------------------
       - name: Build backend
         run: |
           docker build \
             -t $ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA} \
             ./backend
 
+      # -----------------------------------------
+      # 6. Push backend image to ECR
+      # -----------------------------------------
       - name: Push backend
         run: |
           docker push \
             $ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA}
 
+      # -----------------------------------------
+      # 7. Build frontend Docker image
+      # -----------------------------------------
       - name: Build frontend
         run: |
           docker build \
             -t $ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA} \
             ./frontend
 
+      # -----------------------------------------
+      # 8. Push frontend image to ECR
+      # -----------------------------------------
       - name: Push frontend
         run: |
           docker push \
             $ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA}
 
+      # -----------------------------------------
+      # 9. Configure kubectl for EKS
+      # -----------------------------------------
       - name: Configure kubectl
         run: |
           aws eks update-kubeconfig \
             --region $AWS_REGION \
             --name $EKS_CLUSTER_NAME
 
+      # -----------------------------------------
+      # 10. Deploy backend
+      # -----------------------------------------
       - name: Deploy backend
         run: |
           kubectl apply \
@@ -96,6 +136,9 @@ jobs:
             backend=$ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA} \
             -n $NAMESPACE
 
+      # -----------------------------------------
+      # 11. Deploy frontend
+      # -----------------------------------------
       - name: Deploy frontend
         run: |
           kubectl apply \
@@ -106,11 +149,17 @@ jobs:
             frontend=$ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA} \
             -n $NAMESPACE
 
+      # -----------------------------------------
+      # 12. Deploy ALB ingress
+      # -----------------------------------------
       - name: Deploy ingress
         run: |
           kubectl apply \
             -f k8s/shopsphere-ingress.yaml
 
+      # -----------------------------------------
+      # 13. Wait for backend rollout
+      # -----------------------------------------
       - name: Wait for backend
         run: |
           kubectl rollout status \
@@ -118,6 +167,9 @@ jobs:
             -n $NAMESPACE \
             --timeout=180s
 
+      # -----------------------------------------
+      # 14. Wait for frontend rollout
+      # -----------------------------------------
       - name: Wait for frontend
         run: |
           kubectl rollout status \
@@ -125,10 +177,19 @@ jobs:
             -n $NAMESPACE \
             --timeout=180s
 
+      # -----------------------------------------
+      # 15. Verify deployment
+      # -----------------------------------------
       - name: Verify
         run: |
+          echo "===== PODS ====="
           kubectl get pods -n $NAMESPACE
+
+          echo "===== SERVICES ====="
           kubectl get services -n $NAMESPACE
+
+          echo "===== INGRESS ====="
           kubectl get ingress -n $NAMESPACE
 
-
+          echo "===== DEPLOYMENTS ====="
+          kubectl get deployments -n $NAMESPACE
