@@ -108,7 +108,8 @@ jobs:
       - name: Deploy backend
         run: |
           kubectl apply \
-            -f k8s/shopsphere-backend.yaml
+            -f k8s/backend-deployment.yaml \
+            -f k8s/backend-service.yaml
 
           kubectl set image \
             deployment/shopsphere-backend \
@@ -121,7 +122,8 @@ jobs:
       - name: Deploy frontend
         run: |
           kubectl apply \
-            -f k8s/shopsphere-frontend.yaml
+            -f k8s/frontend-deployment.yaml \
+            -f k8s/frontend-service.yaml
 
           kubectl set image \
             deployment/shopsphere-frontend \
