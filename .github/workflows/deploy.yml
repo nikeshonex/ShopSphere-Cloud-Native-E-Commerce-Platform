@@ -24,108 +24,87 @@ jobs:
 
     steps:
 
-      # -----------------------------------------
-      # 1. Checkout repository
-      # -----------------------------------------
+      # ==========================================
+      # 1. Checkout source code
+      # ==========================================
       - name: Checkout code
         uses: actions/checkout@v6
 
-      # -----------------------------------------
-      # 2. Inspect GitHub OIDC claims
-      # -----------------------------------------
-      - name: Inspect GitHub OIDC claims
-        shell: bash
-        run: |
-          RESPONSE=$(curl -sS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
-
-          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
-
-          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
-
-          python3 - "$PAYLOAD" <<'PY'
-          import sys
-          import json
-          import base64
-
-          payload = sys.argv[1]
-          payload += "=" * (-len(payload) % 4)
-
-          data = base64.urlsafe_b64decode(payload)
-          claims = json.loads(data)
-
-          print("ISSUER:")
-          print(claims.get("iss"))
-
-          print("AUDIENCE:")
-          print(claims.get("aud"))
-
-          print("SUBJECT:")
-          print(claims.get("sub"))
-          PY
-
-      # -----------------------------------------
-      # 3. Configure AWS credentials using OIDC
-      # -----------------------------------------
+      # ==========================================
+      # 2. Configure AWS credentials using OIDC
+      # ==========================================
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::584860297058:role/ShopSphere-GitHubActions-Role
           aws-region: ${{ env.AWS_REGION }}
 
-      # -----------------------------------------
+      # ==========================================
+      # 3. Verify AWS authentication
+      # ==========================================
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+
+      # ==========================================
       # 4. Login to Amazon ECR
-      # -----------------------------------------
+      # ==========================================
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # -----------------------------------------
+      # ==========================================
       # 5. Build backend Docker image
-      # -----------------------------------------
+      # ==========================================
       - name: Build backend
         run: |
           docker build \
             -t $ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA} \
             ./backend
 
-      # -----------------------------------------
+      # ==========================================
       # 6. Push backend image to ECR
-      # -----------------------------------------
+      # ==========================================
       - name: Push backend
         run: |
           docker push \
             $ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA}
 
-      # -----------------------------------------
+      # ==========================================
       # 7. Build frontend Docker image
-      # -----------------------------------------
+      # ==========================================
       - name: Build frontend
         run: |
           docker build \
             -t $ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA} \
             ./frontend
 
-      # -----------------------------------------
+      # ==========================================
       # 8. Push frontend image to ECR
-      # -----------------------------------------
+      # ==========================================
       - name: Push frontend
         run: |
           docker push \
             $ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA}
 
-      # -----------------------------------------
+      # ==========================================
       # 9. Configure kubectl for EKS
-      # -----------------------------------------
+      # ==========================================
       - name: Configure kubectl
         run: |
           aws eks update-kubeconfig \
             --region $AWS_REGION \
             --name $EKS_CLUSTER_NAME
 
-      # -----------------------------------------
-      # 10. Deploy backend
-      # -----------------------------------------
+      # ==========================================
+      # 10. Verify Kubernetes access
+      # ==========================================
+      - name: Verify Kubernetes access
+        run: |
+          kubectl get nodes
+
+      # ==========================================
+      # 11. Deploy backend Kubernetes resources
+      # ==========================================
       - name: Deploy backend
         run: |
           kubectl apply \
@@ -136,9 +115,9 @@ jobs:
             backend=$ECR_REGISTRY/shopsphere-backend:${GITHUB_SHA} \
             -n $NAMESPACE
 
-      # -----------------------------------------
-      # 11. Deploy frontend
-      # -----------------------------------------
+      # ==========================================
+      # 12. Deploy frontend Kubernetes resources
+      # ==========================================
       - name: Deploy frontend
         run: |
           kubectl apply \
@@ -149,17 +128,17 @@ jobs:
             frontend=$ECR_REGISTRY/shopsphere-frontend:${GITHUB_SHA} \
             -n $NAMESPACE
 
-      # -----------------------------------------
-      # 12. Deploy ALB ingress
-      # -----------------------------------------
+      # ==========================================
+      # 13. Deploy ALB Ingress
+      # ==========================================
       - name: Deploy ingress
         run: |
           kubectl apply \
             -f k8s/shopsphere-ingress.yaml
 
-      # -----------------------------------------
-      # 13. Wait for backend rollout
-      # -----------------------------------------
+      # ==========================================
+      # 14. Wait for backend rollout
+      # ==========================================
       - name: Wait for backend
         run: |
           kubectl rollout status \
@@ -167,9 +146,9 @@ jobs:
             -n $NAMESPACE \
             --timeout=180s
 
-      # -----------------------------------------
-      # 14. Wait for frontend rollout
-      # -----------------------------------------
+      # ==========================================
+      # 15. Wait for frontend rollout
+      # ==========================================
       - name: Wait for frontend
         run: |
           kubectl rollout status \
@@ -177,19 +156,32 @@ jobs:
             -n $NAMESPACE \
             --timeout=180s
 
-      # -----------------------------------------
-      # 15. Verify deployment
-      # -----------------------------------------
-      - name: Verify
+      # ==========================================
+      # 16. Verify Kubernetes deployment
+      # ==========================================
+      - name: Verify deployment
         run: |
-          echo "===== PODS ====="
+          echo "========================================"
+          echo "PODS"
+          echo "========================================"
           kubectl get pods -n $NAMESPACE
 
-          echo "===== SERVICES ====="
+          echo "========================================"
+          echo "SERVICES"
+          echo "========================================"
           kubectl get services -n $NAMESPACE
 
-          echo "===== INGRESS ====="
+          echo "========================================"
+          echo "DEPLOYMENTS"
+          echo "========================================"
+          kubectl get deployments -n $NAMESPACE
+
+          echo "========================================"
+          echo "INGRESS"
+          echo "========================================"
           kubectl get ingress -n $NAMESPACE
 
-          echo "===== DEPLOYMENTS ====="
-          kubectl get deployments -n $NAMESPACE
+          echo "========================================"
+          echo "TARGET GROUP BINDINGS"
+          echo "========================================"
+          kubectl get targetgroupbindings -n $NAMESPACE
