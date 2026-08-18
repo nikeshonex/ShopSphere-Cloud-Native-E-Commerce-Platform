@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shopsphere-ingress
+  namespace: shopsphere
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+
+spec:
+  ingressClassName: alb
+
+  rules:
+    - http:
+        paths:
+          # Backend API
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: shopsphere-backend
+                port:
+                  number: 5000
+
+          # Frontend
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: shopsphere-frontend
+                port:
+                  number: 80

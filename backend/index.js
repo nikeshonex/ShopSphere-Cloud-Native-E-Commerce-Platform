@@ -15,12 +15,15 @@ app.get("/", (req, res) => {
 });
 
 app.get("/health", (req, res) => {
-  res.json({
-    status: "UP"
-  });
+  res.json({ status: "UP" });
 });
 
-app.listen(PORT, () => {
+app.get("/api/health", (req, res) => {
+  res.json({ status: "UP" });
+});
+
+
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Backend running on port ${PORT}`);
 });
 
