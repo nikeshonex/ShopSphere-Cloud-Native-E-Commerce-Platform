@@ -28,9 +28,9 @@ jobs:
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
-          with:
+        with:
           role-to-assume: arn:aws:iam::584860297058:role/ShopSphere-GitHubActions-Role
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
