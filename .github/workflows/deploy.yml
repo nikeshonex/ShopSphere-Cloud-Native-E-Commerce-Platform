@@ -108,3 +108,4 @@ jobs:
           kubectl get services -n $NAMESPACE
           kubectl get ingress -n $NAMESPACE
 
+
