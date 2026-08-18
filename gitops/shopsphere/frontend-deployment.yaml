@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: /shopsphere-frontend:
+          image: 584860297058.dkr.ecr.us-east-1.amazonaws.com/shopsphere-frontend:55f8eb8d7fdf215fa06fcd27cea7a26c8e6a8e8f
 
           ports:
             - containerPort: 80
